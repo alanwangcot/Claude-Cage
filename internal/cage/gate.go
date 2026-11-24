@@ -66,6 +66,7 @@ type EgressGate struct {
 	epoch                             uint64
 	epochContext                      context.Context
 	cancel                            context.CancelFunc
+	leaseDeadline                     time.Time // monotonic deadline; state.Until holds the public wall-clock deadline
 	timer                             *time.Timer
 	connections                       map[*gateConn]struct{}
 	probeRequests                     int
@@ -138,7 +139,12 @@ func (g *EgressGate) SyncProxyRevision(cfg Config) error {
 
 func (g *EgressGate) Status() GateStatus {
 	g.mu.Lock()
-	defer g.mu.Unlock()
+	var expired []*gateConn
+	if g.state.Mode != GateClosed && !g.leaseActiveLocked() {
+		// A status request can arrive before the lease timer runs after wake.
+		// Publish the actual closure and epoch that a recovery check must use.
+		expired = g.transitionLocked(GateClosed, false, "检查或监测授权已到期")
+	}
 	s := g.state
 	s.Epoch = g.epoch
 	s.PolicyVerified = g.raw.Allows("tcp", netip.MustParseAddrPort("1.1.1.1:443")) &&
@@ -146,21 +152,26 @@ func (g *EgressGate) Status() GateStatus {
 		!g.raw.Allows("icmp", netip.MustParseAddrPort("1.1.1.1:1")) &&
 		!g.raw.Allows("tcp", netip.MustParseAddrPort("[2606:4700:4700::1111]:443")) &&
 		!g.raw.Allows("tcp", netip.MustParseAddrPort("127.0.0.1:17777"))
-	if s.Mode != GateClosed && !time.Now().Before(s.Until) {
-		s.Mode = GateClosed
-		s.Reason = "检查或监测授权已到期"
-	}
 	s.Connections = len(g.connections)
 	if s.Report != nil {
 		r := *s.Report
 		r.Checks = append([]SafetyCheck(nil), r.Checks...)
 		s.Report = &r
 	}
+	g.mu.Unlock()
+	closeGateConnections(expired)
 	return s
 }
 
+// On macOS the monotonic clock can pause during sleep. Honor both the
+// elapsed-time limit and the wall deadline advertised to the controller.
+func (g *EgressGate) leaseActiveLocked() bool {
+	now := time.Now()
+	return now.Before(g.leaseDeadline) && now.Before(g.state.Until)
+}
+
 func (g *EgressGate) validLocked(epoch uint64) bool {
-	return g.epoch == epoch && g.state.Mode != GateClosed && time.Now().Before(g.state.Until)
+	return g.epoch == epoch && g.state.Mode != GateClosed && g.leaseActiveLocked()
 }
 
 func (g *EgressGate) armLocked(duration time.Duration) {
@@ -171,11 +182,12 @@ func (g *EgressGate) armUntilLocked(until time.Time) {
 	if g.timer != nil {
 		g.timer.Stop()
 	}
-	g.state.Until = until
+	g.leaseDeadline = until
+	g.state.Until = until.Round(0)
 	epoch := g.epoch
 	g.timer = time.AfterFunc(time.Until(until), func() {
 		g.mu.Lock()
-		if epoch != g.epoch || time.Now().Before(g.state.Until) {
+		if epoch != g.epoch || g.leaseActiveLocked() {
 			g.mu.Unlock()
 			return
 		}
@@ -195,6 +207,7 @@ func (g *EgressGate) transitionLocked(mode string, fault bool, reason string) []
 	g.epoch++
 	g.epochContext, g.cancel = context.WithCancel(context.Background())
 	g.state.Mode, g.state.Fault, g.state.Reason = mode, fault, reason
+	g.leaseDeadline = time.Time{}
 	g.state.Until = time.Time{}
 	if mode == GateClosed {
 		g.state.CheckID = ""
@@ -242,7 +255,7 @@ func (g *EgressGate) SetFault(fault bool) error {
 		g.mu.Unlock()
 		return ErrGateClosed
 	}
-	until := g.state.Until
+	until := g.leaseDeadline
 	connections := g.transitionLocked(GateChecking, fault, "关键检查进行中")
 	g.armUntilLocked(until)
 	g.mu.Unlock()
@@ -284,11 +297,12 @@ func (g *EgressGate) Renew(reportID string) error {
 }
 
 func (g *EgressGate) armReportLeaseLocked(report SafetyReport) {
-	until := time.Now().Add(GateLease)
-	if expiry := report.CreatedAt.Add(SafetyReportLifetime); expiry.Before(until) {
-		until = expiry
-	}
-	g.armUntilLocked(until)
+	now := time.Now()
+	expiry := report.CreatedAt.Add(SafetyReportLifetime)
+	// An in-process report can carry both clocks. Bound the lease by both
+	// so its published wall deadline never extends past the report's expiry.
+	remaining := min(GateLease, expiry.Sub(now), expiry.Round(0).Sub(now))
+	g.armUntilLocked(now.Add(remaining))
 }
 
 func (g *EgressGate) Allows(network string, dst netip.AddrPort) bool {

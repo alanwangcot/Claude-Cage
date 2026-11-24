@@ -328,3 +328,51 @@ func TestGateControlAuthenticationAndConfigInvalidation(t *testing.T) {
 		t.Fatal("changed configuration retained network authorization")
 	}
 }
+
+func TestStatusAfterWakeCommitsExpiredLeaseBeforeRecovery(t *testing.T) {
+	g := fixtureGate(t)
+	fixtureGrant(t, g)
+	g.mu.Lock()
+	epoch := g.epoch
+	oldContext := g.epochContext
+	g.timer.Stop()
+	// Sleep advanced wall time past the published deadline while the
+	// monotonic lease and its timer still have time left.
+	g.state.Until = time.Now().Round(0).Add(-time.Second)
+	g.mu.Unlock()
+	if g.Allows("tcp", netip.MustParseAddrPort("8.8.8.8:443")) {
+		t.Fatal("wall-expired lease allowed traffic before the next status poll")
+	}
+	expired := g.Status()
+	if expired.Mode != GateClosed || expired.Epoch != epoch+1 || expired.Report == nil || !expired.Until.IsZero() {
+		t.Fatalf("inconsistent expired lease: %+v", expired)
+	}
+	if oldContext.Err() == nil || expired.Reason != "检查或监测授权已到期" {
+		t.Fatal("expiry did not revoke the old operations and publish the recovery reason")
+	}
+	if next := g.Status(); next.Epoch != expired.Epoch || next.Mode != GateClosed {
+		t.Fatal("subsequent poll invalidated the scheduled recheck")
+	}
+	if err := g.Renew(expired.Report.ID); err == nil {
+		t.Fatal("expired report renewed without new checks")
+	}
+	fixtureGrant(t, g)
+	if got := g.Status(); got.Mode != GateOpen || got.Report.CheckID == expired.Report.CheckID {
+		t.Fatal("fresh checks did not restore access")
+	}
+}
+
+func TestGateElapsedDeadlineStillAppliesAfterWallClockMovesBack(t *testing.T) {
+	g := fixtureGate(t)
+	report := fixtureGrant(t, g)
+	g.mu.Lock()
+	g.timer.Stop()
+	g.leaseDeadline = time.Now().Add(-time.Second)
+	g.mu.Unlock()
+	if g.Allows("tcp", netip.MustParseAddrPort("8.8.8.8:443")) || g.Renew(report.ID) == nil {
+		t.Fatal("elapsed lease allowed traffic or renewal before the next status poll")
+	}
+	if got := g.Status(); got.Mode != GateClosed {
+		t.Fatal("expired monotonic deadline did not close the gate")
+	}
+}
