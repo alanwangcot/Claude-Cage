@@ -3504,5 +3504,11 @@
   "Cage ID": "Identifiant Cage",
   "Claude 邮箱": "Adresse e-mail Claude",
   "该账号命令名已被使用，请选择其他名称": "Ce nom de commande est déjà utilisé. Choisissez-en un autre.",
-  "账号命令名须以字母或数字开头，最多 64 个字符，可含 -、_ 和 .。不能使用纯数字、内部 ID 或保留命令。": "Le nom de commande du compte doit commencer par une lettre ou un chiffre et comporter au plus 64 caractères. Les tirets (-), les tirets bas (_) et les points (.) sont autorisés. Les noms composés uniquement de chiffres, les identifiants internes et les commandes réservées sont interdits."
+  "账号命令名须以字母或数字开头，最多 64 个字符，可含 -、_ 和 .。不能使用纯数字、内部 ID 或保留命令。": "Le nom de commande du compte doit commencer par une lettre ou un chiffre et comporter au plus 64 caractères. Les tirets (-), les tirets bas (_) et les points (.) sont autorisés. Les noms composés uniquement de chiffres, les identifiants internes et les commandes réservées sont interdits.",
+  "向左拆分": "Scinder à gauche",
+  "向右拆分": "Scinder à droite",
+  "向上拆分": "Scinder vers le haut",
+  "向下拆分": "Scinder vers le bas",
+  "调整终端窗格宽度": "Ajuster la largeur des terminaux",
+  "调整终端窗格高度": "Ajuster la hauteur des terminaux"
 }
