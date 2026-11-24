@@ -3266,5 +3266,11 @@
   "已达配对上限（{0} 台），请先移除不需要的设备。": "Limite d'appareils associés atteinte ({0}). Supprimez d'abord un appareil inutile.",
   "新设备已配对。": "Nouvel appareil associé.",
   "最多可同时配对 8 台设备，请先移除不需要的设备": "Vous pouvez associer jusqu'à 8 appareils simultanément. Supprimez d'abord un appareil inutile.",
-  "未找到已配对的设备": "Appareil associé introuvable"
+  "未找到已配对的设备": "Appareil associé introuvable",
+  "向左拆分": "Scinder à gauche",
+  "向右拆分": "Scinder à droite",
+  "向上拆分": "Scinder vers le haut",
+  "向下拆分": "Scinder vers le bas",
+  "调整终端窗格宽度": "Ajuster la largeur des terminaux",
+  "调整终端窗格高度": "Ajuster la hauteur des terminaux"
 }

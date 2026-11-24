@@ -3266,5 +3266,11 @@
   "已达配对上限（{0} 台），请先移除不需要的设备。": "Se alcanzó el límite de dispositivos vinculados ({0}). Elimina primero un dispositivo que no necesites.",
   "新设备已配对。": "Nuevo dispositivo vinculado.",
   "最多可同时配对 8 台设备，请先移除不需要的设备": "Se pueden vincular hasta 8 dispositivos a la vez. Elimina primero un dispositivo que no necesites.",
-  "未找到已配对的设备": "No se encontró el dispositivo vinculado"
+  "未找到已配对的设备": "No se encontró el dispositivo vinculado",
+  "向左拆分": "Dividir a la izquierda",
+  "向右拆分": "Dividir a la derecha",
+  "向上拆分": "Dividir hacia arriba",
+  "向下拆分": "Dividir hacia abajo",
+  "调整终端窗格宽度": "Ajustar el ancho de los terminales",
+  "调整终端窗格高度": "Ajustar la altura de los terminales"
 }

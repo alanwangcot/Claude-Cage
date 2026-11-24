@@ -3266,5 +3266,11 @@
   "已达配对上限（{0} 台），请先移除不需要的设备。": "Waxaa la gaaray xadka qalabka la isku xiri karo ({0}). Fadlan marka hore ka saar qalab aadan u baahnayn.",
   "新设备已配对。": "Qalab cusub waa la isku xiray.",
   "最多可同时配对 8 台设备，请先移除不需要的设备": "Waxaa isku mar la isku xiri karaa ilaa 8 qalab. Fadlan marka hore ka saar qalab aadan u baahnayn.",
-  "未找到已配对的设备": "Qalabka isku xiran lama helin"
+  "未找到已配对的设备": "Qalabka isku xiran lama helin",
+  "向左拆分": "U kala qaybi bidix",
+  "向右拆分": "U kala qaybi midig",
+  "向上拆分": "U kala qaybi kor",
+  "向下拆分": "U kala qaybi hoos",
+  "调整终端窗格宽度": "Beddel ballaca qaybaha terminalka",
+  "调整终端窗格高度": "Beddel dhererka qaybaha terminalka"
 }
