@@ -1,0 +1,222 @@
+diff --git a/ui/src/main.jsx b/ui/src/main.jsx
+index 5e9189d278de8370fa663782913df07d15589004..ca9657212a4d46d9abf7e2c6500f8dca29bf38d0 100644
+--- a/ui/src/main.jsx
++++ b/ui/src/main.jsx
+@@ -1837,6 +1837,7 @@ function App() {
+             runtimeLabel={runtimeLabel}
+             network={network}
+             onHome={() => { setManagementPage(""); setDesktopOpen(false); setHome(true); }}
++            onEditProject={editGroup => setProjectDialog({ editGroup })}
+             onOpenProject={(path = "") => setProjectDialog({ path })}
+             onSelect={select}
+             onClose={closeTab}
+@@ -2350,6 +2351,11 @@ function App() {
+           current={settings}
+           status={status}
+           initialPath={projectDialog.path}
++          editGroup={projectDialog.editGroup}
++          onEdited={async () => {
++            await Promise.all([refreshSettings(), refreshStatus.current?.()]);
++            setProjectDialog(null);
++          }}
+           onClose={() => setProjectDialog(null)}
+           onSettings={() => { setProjectDialog(null); openSettings("project"); }}
+           onOpened={openedProject}
+diff --git a/ui/src/modal.jsx b/ui/src/modal.jsx
+index 78b584e2abec9a3c193525a9f1c1b5d46666d02b..e68467645113438714c2c21dc68f4aab09f4323b 100644
+--- a/ui/src/modal.jsx
++++ b/ui/src/modal.jsx
+@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef } from "react";
+ import { X } from "lucide-react";
+ import { useTranslation } from "./interface-language.mjs";
+ 
+-export function Modal({ title, children, onClose, wide = false, footer, anchor }) {
++export function Modal({ title, children, onClose, wide = false, footer, anchor, initialFocus }) {
+   const tr = useTranslation();
+   const panel = useRef(),
+     closeRef = useRef(onClose);
+@@ -40,7 +40,7 @@ export function Modal({ title, children, onClose, wide = false, footer, anchor }
+   }, [anchor]);
+   useEffect(() => {
+     const previous = anchor || document.activeElement;
+-    const first = panel.current.querySelector(
++    const first = initialFocus?.current || panel.current.querySelector(
+       "input:not([disabled]),button:not([disabled]),select:not([disabled])",
+     );
+     first?.focus();
+diff --git a/ui/src/project-dialog.jsx b/ui/src/project-dialog.jsx
+index 8641650bb13137db69f7c2c79a9cdf293f3b6664..3c198e0dbd77f9dc57d9bf9d330881f301e2b830 100644
+--- a/ui/src/project-dialog.jsx
++++ b/ui/src/project-dialog.jsx
+@@ -1,5 +1,5 @@
+ import { isWindows, isMac } from "./platform.mjs";
+-import React, { useEffect, useState } from "react";
++import React, { useEffect, useRef, useState } from "react";
+ import { FolderMinus, FolderOpen, LoaderCircle, PencilLine, Plus } from "lucide-react";
+ import { api, native, nativeAvailable } from "./api";
+ import { SafetyMessage } from "./safety-message";
+@@ -12,6 +12,8 @@ import { useTranslation } from "./interface-language.mjs";
+ export function ProjectDialog({
+   status,
+   initialPath = "",
++  editGroup,
++  onEdited,
+   activate = true,
+   onClose,
+   onOpened,
+@@ -22,11 +24,12 @@ export function ProjectDialog({
+   const groups = projectGroups(status);
+   const projects = groups.map(group => group.workspace);
+   const initialGroup = groups.find(group => group.folders.includes(initialPath));
+-  const [adding, setAdding] = useState(Boolean(initialPath && !initialGroup) || projects.length === 0);
+-  const [path, setPath] = useState(initialGroup?.workspace || initialPath || groups.find(group => group.folders.includes(status.workspace))?.workspace || projects[0] || "");
+-  const [editing, setEditing] = useState("");
+-  const [name, setName] = useState("");
+-  const [folders, setFolders] = useState([]);
++  const nameInput = useRef(null);
++  const [adding, setAdding] = useState(Boolean(editGroup || (initialPath && !initialGroup)) || projects.length === 0);
++  const [path, setPath] = useState(editGroup ? "" : initialGroup?.workspace || initialPath || groups.find(group => group.folders.includes(status.workspace))?.workspace || projects[0] || "");
++  const [editing, setEditing] = useState(editGroup?.workspace || "");
++  const [name, setName] = useState(editGroup?.name || "");
++  const [folders, setFolders] = useState(editGroup?.folders || []);
+   const [error, setError] = useState("");
+   const [recovery, setRecovery] = useState("");
+   const [submitting, setSubmitting] = useState(false);
+@@ -138,6 +141,10 @@ export function ProjectDialog({
+       const saved = await api("/projects/save", {
+         workspace: editing, name: name.trim() || projectName(draftFolders[0]), folders: draftFolders,
+       });
++      if (editGroup) {
++        await onEdited();
++        return;
++      }
+       workspace = saved.workspace;
+       setEditing(saved.workspace);
+     }
+@@ -162,12 +169,13 @@ export function ProjectDialog({
+   return (
+     <Modal
+       title={adding ? editing ? tr("编辑项目") : tr("创建项目") : activate ? tr("打开项目") : tr("选择工作项目")}
++      initialFocus={editGroup ? nameInput : undefined}
+       onClose={busy ? undefined : onClose}
+       footer={
+         <>
+           <span className="save-note">
+             {busy
+-              ? submitting ? removeTarget ? tr("正在移除项目…") : tr("正在连接项目…") : status.job?.message
++              ? submitting ? removeTarget ? tr("正在移除项目…") : editGroup ? tr("正在保存…") : tr("正在连接项目…") : status.job?.message
+               : adding ? editing ? tr("会话历史保留") : tr("首个文件夹为默认目录") : tr("使用已授权的 Cage 项目")}
+           </span>
+           <button disabled={busy} onClick={onClose}>
+@@ -195,7 +203,7 @@ export function ProjectDialog({
+         onSubmit={open}
+       >
+         <p>{adding ? tr("为项目命名，并添加需要一起使用的文件夹。") : activate ? tr("选择要打开的项目，或添加新项目。") : tr("从 Cage 项目列表选择工作目录。新项目由 Cage 授权并共享。")}</p>
+-        {canShare && <>
++        {canShare && !editGroup && <>
+           <button type="button" className="quiet-button project-picker-add" onClick={() => { setSharing(!sharing); setWriteAccess(false); }} disabled={busy} aria-expanded={sharing}>
+             <FolderOpen size={16} />{tr("共享本机项目…")}
+           </button>
+@@ -235,9 +243,9 @@ export function ProjectDialog({
+           <button type="button" className="quiet-button project-picker-add" onClick={add} disabled={busy || Boolean(removeTarget) || !status.ready}><Plus size={16} />{remote ? tr("添加云端项目…") : tr("添加本机项目…")}</button>
+         </>}
+         {!sharing && adding && <>
+-          {projects.length > 0 && <button type="button" className="quiet-button project-picker-add" disabled={busy} onClick={() => { setAdding(false); setEditing(""); setFolders([]); setPath(groups.find(group => group.folders.includes(status.workspace))?.workspace || projects[0]); setError(""); }}>{tr("返回已有项目")}</button>}
++          {!editGroup && projects.length > 0 && <button type="button" className="quiet-button project-picker-add" disabled={busy} onClick={() => { setAdding(false); setEditing(""); setFolders([]); setPath(groups.find(group => group.folders.includes(status.workspace))?.workspace || projects[0]); setError(""); }}>{tr("返回已有项目")}</button>}
+           <label htmlFor="project-name">{tr("项目名称")}</label>
+-          <input id="project-name" autoFocus value={name} maxLength={100} onChange={event => setName(event.target.value)} placeholder={tr("例如：课程系统")} disabled={busy} />
++          <input id="project-name" ref={nameInput} autoFocus={!editGroup} value={name} maxLength={100} onChange={event => setName(event.target.value)} placeholder={tr("例如：课程系统")} disabled={busy} />
+           <label>{tr("源文件夹")}</label>
+           {folders.length > 0 && <ul className="project-folder-list" aria-label={tr("已绑定文件夹")}>
+             {folders.map((folder, index) => <li key={folder}>
+diff --git a/ui/src/workspace-sidebar.jsx b/ui/src/workspace-sidebar.jsx
+index d2db2319f8cc4af83f6c3428da5a439dceecd525..5a3c116fc71782aa049d1204ca5248ab1db17af4 100644
+--- a/ui/src/workspace-sidebar.jsx
++++ b/ui/src/workspace-sidebar.jsx
+@@ -11,6 +11,7 @@ import {
+   Monitor,
+   Network,
+   PanelLeftClose,
++  PencilLine,
+   Plus,
+   Power,
+   RefreshCw,
+@@ -22,7 +23,7 @@ import {
+ import { EnvironmentShield } from "./environment-shield";
+ import logo from "./logo.png";
+ import claudeLogo from "./claude-logo.svg";
+-import { dropAfter, moveItem, projectName } from "./workspace-state.mjs";
++import { dropAfter, isClientProjectShare, moveItem, projectName } from "./workspace-state.mjs";
+ import { WorkspaceTabs } from "./workspace-tabs";
+ import { projectSessionRows, sessionKey, unassignedTerminalTabs } from "./session-order.mjs";
+ import { AccountMenu } from "./account";
+@@ -60,6 +61,7 @@ export function WorkspaceSidebar({
+   network,
+   onHome,
+   onOpenProject,
++  onEditProject,
+   onProjectSelect,
+   onProjectReorder,
+   onSelect,
+@@ -287,6 +289,13 @@ export function WorkspaceSidebar({
+         )}
+         {orderedProjects.map((path, index) => {
+           const group = projectGroups.find(group => group.workspace === path);
++          const editable = group && !isClientProjectShare(path);
++          const editFromHeading = event => {
++            if (!editable || !ready || busy) return;
++            event.preventDefault();
++            event.currentTarget.focus();
++            onEditProject(group);
++          };
+           const folders = group?.folders || [path];
+           const project = projectName(path, projectGroups);
+           const rows = projectSessionRows(tabs.filter(tab => tab.kind === "terminal" && folders.includes(tab.workspace)),
+@@ -313,6 +322,7 @@ export function WorkspaceSidebar({
+                   title={folders.join("\n")}
+                   aria-expanded={expanded}
+                   aria-keyshortcuts={projects.length > 1 ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
++                  onContextMenu={editFromHeading}
+                   onPointerDown={event => {
+                     if (event.button !== 0 || !event.isPrimary) return;
+                     suppressProjectClick.current = false;
+@@ -332,6 +342,10 @@ export function WorkspaceSidebar({
+                   onPointerCancel={endProjectDrag}
+                   onLostPointerCapture={endProjectDrag}
+                   onKeyDown={event => {
++                    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
++                      editFromHeading(event);
++                      return;
++                    }
+                     if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+                     event.preventDefault();
+                     const after = event.key === "ArrowDown";
+@@ -358,6 +372,16 @@ export function WorkspaceSidebar({
+                   {expanded ? <FolderOpen size={16} /> : <Folder size={16} />}
+                   <span>{project}</span>
+                 </button>
++                {editable && <button
++                  className="icon-button"
++                  aria-label={tr("编辑名称与文件夹…")}
++                  title={tr("编辑名称与文件夹…")}
++                  aria-haspopup="dialog"
++                  disabled={!ready || busy}
++                  onClick={() => onEditProject(group)}
++                >
++                  <PencilLine size={15} />
++                </button>}
+                 <button
+                   className="icon-button"
+                   aria-label={tr("打开 {0} 的编辑器", (project))}
+diff --git a/ui/src/workspace-state.mjs b/ui/src/workspace-state.mjs
+index a127962edef3a3ccfa7c9f8e827a92b2818862d3..e0565ed10a46bba6c464cae11fc7292b41c053a2 100644
+--- a/ui/src/workspace-state.mjs
++++ b/ui/src/workspace-state.mjs
+@@ -37,6 +37,7 @@ export function dropAfter(row, clientY) {
+ }
+ 
+ const clientMount = /^\/run\/cage-client-projects\/[0-9a-f]{32}$/;
++export const isClientProjectShare = path => path === "/run/cage-client-projects" || path.startsWith("/run/cage-client-projects/");
+ const folderName = (path) => path?.split(/[\\/]/).filter(Boolean).at(-1);
+ 
+ export function rememberClientProjectName(share) {
