@@ -113,6 +113,15 @@ try {
   assert.equal(above.x, below.x);
   assert.ok(above.y + above.height < below.y);
 
+  await page.getByRole("button", { name: "收起侧栏", exact: true }).click();
+  const expandSidebar = workspace.getByRole("button", { name: "展开侧栏", exact: true });
+  const leftExpandSidebar = newPane.getByRole("button", { name: "展开侧栏", exact: true });
+  await leftExpandSidebar.waitFor();
+  await primaryPane.locator(".xterm-screen").click();
+  assert.equal(await primaryPane.getAttribute("data-focused"), "true");
+  assert.equal(await expandSidebar.count(), 1);
+  await leftExpandSidebar.click();
+
   const vertical = workspace.getByRole("separator", { name: "调整终端窗格宽度" });
   const horizontal = workspace.getByRole("separator", { name: "调整终端窗格高度" });
   const value = separator => separator.getAttribute("aria-valuenow");

@@ -1738,7 +1738,7 @@ function App() {
     if (tab && tab.id !== activeRef.current) void select(tab.id, false);
   };
   const terminalAccountRequest = (path, options) => api("/cli" + path, options.body);
-  const terminalHeader = tab => {
+  const terminalHeader = (tab, firstSplitPane) => {
     const path = tab?.workspace || workspace;
     const account = tab?.claude_account_id && terminalAccountName(tab);
     const detail = tab?.terminalKind === "claude-login" ? tr("登录 · {0}", account || tr("新账号"))
@@ -1763,7 +1763,7 @@ function App() {
       accountControl={accountControl}
       busy={busy} onHome={() => setHome(true)} canSplit={running && tab && !tab.closed}
       onSplit={(side, anchor) => newSplit(tab, side, anchor)}
-      sidebarButton={sidebarButton(visibleTerminalTree && tab?.id !== active ? "right" : paneSide(tab?.id))}
+      sidebarButton={(!firstSplitPane || tab.id === firstSplitPane) && sidebarButton(paneSide(tab.id))}
       exitButton={expandButton(tab)}
       location={location} triggerRef={!tab || tab.id === active ? terminalTrigger : undefined}
       menu={terminalMenuAt(location) || terminalMenuAt(location + "-right") || terminalMenuAt(location + "-bottom")} onClose={() => closeTab(tab)} />;
@@ -2222,7 +2222,7 @@ function App() {
                       data-terminal-pane={tab.id} data-focused={active === tab.id} hidden={!visible}
                       onPointerDownCapture={event => { if (!event.target.closest("button, input, select")) focusHeader(tab); }}
                       onFocusCapture={event => { if (event.target.closest(".terminal-host")) focusHeader(tab); }}>
-                      {visible && terminalHeader(tab)}
+                      {visible && terminalHeader(tab, positions?.keys().next().value)}
                       <div className="pane-body">
                         <TerminalView
                           session={{ ...tab, id: tab.sessionId, paused: !tab.closed && cliSessions.sessions.some(s => s.id === tab.cli_session_id && s.paused) }}

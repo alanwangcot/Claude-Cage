@@ -283,7 +283,7 @@ function OpenedTerminalView({ session, visible, focused = true, onStatus, onCont
   const { appearance, theme, variant } = useAppearance();
   const box = useRef(),
     instance = useRef(),
-    fit = useRef(),
+    resizeTerminal = useRef(),
     socket = useRef();
   const [connected, setConnected] = useState(false),
     [screenReady, setScreenReady] = useState(false),
@@ -354,7 +354,6 @@ function OpenedTerminalView({ session, visible, focused = true, onStatus, onCont
     terminal.loadAddon(new WebLinksAddon(activateLogin, { urlRegex: claudeLoginLink }));
     terminal.open(box.current);
     instance.current = terminal;
-    fit.current = fitter;
     let startupPending = Boolean(session.cli_session_id && !session.closed);
     let startupVisible = !startupPending;
     setPreparing(startupPending);
@@ -380,18 +379,20 @@ function OpenedTerminalView({ session, visible, focused = true, onStatus, onCont
       if (!screen.includes("WARNING:Loadingdevelopmentchannels")) reveal();
     };
     const startupRender = terminal.onRender(painted);
+    let lastSize = null;
     const resize = () => {
-      if (!visibleRef.current || ws.readyState !== WebSocket.OPEN) return;
+      if (!visibleRef.current) return;
       try {
         fitter.fit();
-        if (!hostInput.current && ws.readyState === WebSocket.OPEN)
-          ws.send(
-            JSON.stringify({
-              type: "resize",
-              cols: terminal.cols,
-              rows: terminal.rows,
-            }),
-          );
+        if (hostInput.current) {
+          lastSize = null;
+          return;
+        }
+        if (ws.readyState !== WebSocket.OPEN) return;
+        const { cols, rows } = terminal;
+        if (lastSize?.cols === cols && lastSize.rows === rows) return;
+        ws.send(JSON.stringify({ type: "resize", cols, rows }));
+        lastSize = { cols, rows };
       } catch {}
     };
     replayingHistory.current = false;
@@ -449,7 +450,10 @@ function OpenedTerminalView({ session, visible, focused = true, onStatus, onCont
       },
       connection(active, parked) {
         if (disposed) return;
-        if (!active) clearPendingInput();
+        if (!active) {
+          clearPendingInput();
+          lastSize = null;
+        }
         setConnected(active);
         if (parked || (!active && !outputEnded && !sessionClosed.current)) {
           setScreenReady(false);
@@ -465,6 +469,7 @@ function OpenedTerminalView({ session, visible, focused = true, onStatus, onCont
       },
     });
     socket.current = ws;
+    resizeTerminal.current = resize;
     const clipboardHandler = terminal.parser.registerOscHandler(52, async (data) => {
       if (disposed || replayingHistory.current || !visibleRef.current || !focusedRef.current || !box.current?.contains(document.activeElement)) return true;
       const text = terminalClipboardText(data);
@@ -657,6 +662,7 @@ function OpenedTerminalView({ session, visible, focused = true, onStatus, onCont
       observer.disconnect();
       ws.close();
       socket.current = null;
+      resizeTerminal.current = null;
       terminal.dispose();
       instance.current = null;
     };
@@ -665,12 +671,8 @@ function OpenedTerminalView({ session, visible, focused = true, onStatus, onCont
     socket.current?.setVisible(visible);
     if (visible) {
       if (socket.current?.readyState !== WebSocket.OPEN) return;
-      fit.current?.fit();
+      resizeTerminal.current?.();
       if (focused && !preparing) instance.current?.focus();
-      const ws = socket.current,
-        t = instance.current;
-      if (!session.host_input && ws?.readyState === WebSocket.OPEN && t)
-        ws.send(JSON.stringify({ type: "resize", cols: t.cols, rows: t.rows }));
     }
   }, [visible, focused, preparing, session.host_input]);
   useEffect(() => {
@@ -678,7 +680,7 @@ function OpenedTerminalView({ session, visible, focused = true, onStatus, onCont
     instance.current.options.theme = terminalTheme(theme, variant);
     instance.current.options.fontFamily = theme.fonts.code || systemCodeFont;
     instance.current.options.fontSize = appearance.codeFontSize;
-    if (visibleRef.current) fit.current?.fit();
+    resizeTerminal.current?.();
   }, [theme, variant, appearance.codeFontSize]);
   return (
     <div className={`terminal-view ${visible ? "" : "concealed"}`}>

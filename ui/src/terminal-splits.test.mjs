@@ -8,6 +8,7 @@ test("nested splits resize independently on both axes", () => {
   let groups = layout();
   groups = resizeTerminalSplit(groups, "columns", 0.4);
   groups = resizeTerminalSplit(groups, "rows", 0.6);
+  assert.equal(resizeTerminalSplit(groups, "rows", 0.6), groups);
   const { panes, dividers } = terminalGeometry(groups[0], 1008, 508);
   assert.deepEqual([...panes], [
     ["a", { left: 0, top: 0, width: 400, height: 508 }],

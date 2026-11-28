@@ -57,7 +57,8 @@ export function resizeTerminalSplit(groups, id, ratio) {
     const second = resize(tree.second);
     return first === tree.first && second === tree.second ? tree : { ...tree, first, second };
   };
-  return groups.map(resize);
+  const next = groups.map(resize);
+  return next.every((tree, index) => tree === groups[index]) ? groups : next;
 }
 
 export function terminalGeometry(tree, width, height) {

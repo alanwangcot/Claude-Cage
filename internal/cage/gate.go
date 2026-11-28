@@ -163,8 +163,8 @@ func (g *EgressGate) Status() GateStatus {
 	return s
 }
 
-// On macOS the monotonic clock can pause during sleep. Honor both the
-// elapsed-time limit and the wall deadline advertised to the controller.
+// On macOS and Linux the monotonic clock can pause during suspend. Honor
+// both the elapsed-time limit and the wall deadline advertised to the controller.
 func (g *EgressGate) leaseActiveLocked() bool {
 	now := time.Now()
 	return now.Before(g.leaseDeadline) && now.Before(g.state.Until)

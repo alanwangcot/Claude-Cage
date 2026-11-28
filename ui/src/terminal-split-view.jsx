@@ -1,10 +1,16 @@
 import { useTranslation } from "./interface-language.mjs";
-import React, { useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { terminalGeometry } from "./terminal-splits.mjs";
 
 function SplitDivider({ divider, onResize }) {
   const tr = useTranslation();
   const drag = useRef(null);
+  const stopDrag = useCallback(() => {
+    const frame = drag.current?.frame;
+    if (frame != null) cancelAnimationFrame(frame);
+    drag.current = null;
+  }, []);
+  useLayoutEffect(() => stopDrag, [stopDrag]);
   const { axis, bounds, first, min, max, available, id } = divider;
   const across = axis === "x";
   const coordinate = event => across ? event.clientX : event.clientY;
@@ -19,13 +25,27 @@ function SplitDivider({ divider, onResize }) {
       event.preventDefault();
       event.currentTarget.focus();
       event.currentTarget.setPointerCapture(event.pointerId);
-      drag.current = { pointer: event.pointerId, origin: coordinate(event), first };
+      const origin = coordinate(event);
+      drag.current = { pointer: event.pointerId, origin, latest: origin, first, frame: null };
     }}
     onPointerMove={event => {
       const state = drag.current;
-      if (state?.pointer === event.pointerId) resize(state.first + coordinate(event) - state.origin);
+      if (state?.pointer !== event.pointerId) return;
+      state.latest = coordinate(event);
+      if (state.frame !== null) return;
+      state.frame = requestAnimationFrame(() => {
+        state.frame = null;
+        resize(state.first + state.latest - state.origin);
+      });
     }}
-    onLostPointerCapture={() => { drag.current = null; }}
+    onPointerUp={event => {
+      const state = drag.current;
+      if (state?.pointer !== event.pointerId) return;
+      const end = coordinate(event);
+      if (state.frame !== null || end !== state.latest) resize(state.first + end - state.origin);
+      stopDrag();
+    }}
+    onLostPointerCapture={stopDrag}
     onDoubleClick={() => resize(available / 2)}
     onKeyDown={event => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
